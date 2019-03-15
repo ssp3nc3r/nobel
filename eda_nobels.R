@@ -7,18 +7,28 @@ library(dplyr)
 library(ggplot2); library(ggthemes)
 
 # clean and transform data ----
-cats <- c("Chemistry", "Economics", "Physics", "Literature", "Medicine", "Peace")
-d <- d %>% mutate(Category = factor(Category, levels = cats, ordered = T))
-d <- d %>% mutate(Sex = factor(Sex))
-d <- d %>% mutate(Birth.Year = as.integer(substring(Birth.Date, 1, 4)))
-d <- d %>% mutate(Age = Year - Birth.Year)
+cats <- c("Chemistry", "Economics", "Literature", 
+          "Medicine", "Peace", "Physics")
 
-davg <- d %>% group_by(Category) %>% summarise(avg_age = mean(Age, na.rm = T)) %>% ungroup()
-mean(d$Age, na.rm = T)
+d <- d %>% 
+  mutate(Category = factor(Category, 
+                           levels = cats, 
+                           ordered = T)) %>% 
+  mutate(Sex = factor(Sex)) %>% 
+  mutate(Birth.Year = as.integer(substring(Birth.Date, 1, 4))) %>% 
+  mutate(Age = Year - Birth.Year)
+
+davg <- d %>% 
+  group_by(Category) %>% 
+  summarise(avg_age = mean(Age, na.rm = T)) %>% 
+  ungroup()
 
 # main display of age versus year awarded ----
-cols <- c("#d23c30", "#277585", "#79bb60", "#d9c55c", "#892f43", "#f0795c")
+# grab hex colors from original
+cols <- c("#cc5b47", "#488595", "#96c17c", 
+          "#decd7c", "#924855", "#e79275")
 
+# plot
 ggplot(d, aes(color = Category)) + 
   theme_minimal(base_family = "sans") +
   geom_hline(yintercept = mean(d$Age, na.rm = T), 
@@ -38,8 +48,43 @@ ggplot(d, aes(color = Category)) +
   labs(y = "", x = "")
 
 # bar charts at end ----
-# need to get grade level data ... wikipedia?
-d2 <- d %>% group_by()
+# need to get grade level data ... wikipedia:
+# https://en.wikipedia.org/wiki/List_of_Nobel_laureates_by_university_affiliation#Other_universities_(51st–)
+
+# estimated numbers from reading original visual display as placeholder until
+# find actual data
+dedu <- read.table(text = "
+Category Doctor Master Bachelor None
+Chemistry 98 1 1 0
+Economics 95 1 4 0
+Literature 20 20 25 35
+Medicine 95 4 1 0
+Peace 32 25 20 23
+Physics 99.1 .3 .3 .3
+           ", header = T)
+
+dedu <- reshape2::melt(dedu, 
+                       variable.name = "Education", 
+                       value.name = "Percent")
+dedu <- dedu %>% 
+  mutate(Category = factor(Category, 
+                           levels = cats, 
+                           ordered = T),
+         Education = factor(Education, 
+                            levels = c("None", "Bachelor", "Master", "Doctor"), 
+                            ordered = T))
+
+ggplot(dedu) + 
+  facet_wrap(~Category, ncol = 1) +
+  geom_bar(aes(Education, Percent, fill = Category), stat = "identity") + 
+  coord_flip() +
+  scale_fill_manual(values = cols) +
+  theme_minimal(base_family = "sans") +
+  theme(legend.position = "", 
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title = element_blank())
 
 
 # bottom stacked bar of birth city ----
@@ -88,6 +133,7 @@ universities <- c("Harvard", "MIT", "Stanford", "Caltech",
                   "Columbia", "Cambridge", "Berkeley")
 
 # clean data for universities
+# note: a bit messy because original data had non utf-8 encoding
 d5 <- d %>%
   mutate(Organization.Name = ifelse(grepl("Berkeley", Organization.City, perl = T),
                              "Berkeley", Organization.Name)) %>%
@@ -110,8 +156,30 @@ d5 <- d %>%
 # aggregate prizes for universities per category
 d5 <- d5 %>% 
   filter(University %in% universities) %>%
-  group_by(Category, University) %>% 
+  group_by(Category, University, .drop = F) %>% 
   summarise(n = n())
 
+# setup data for plot
+library(ggforce)
+data <- gather_set_data(d5, 1:2)
+
+# hack to add litrature back in (there are zero 
+# literature prize winners at schools of interest
+data <- data %>% 
+  mutate(University = ifelse(Category == "Literature", "Harvard", University)) %>%
+  mutate(y = ifelse(Category == "Literature" & x == "University", "Harvard", y)) %>%
+  mutate(y = ifelse(Category == "Literature" & x == "Category", "Literature", y))
+
 # plot
-ggplot(d5) 
+ggplot(data, aes(x, id=id, split = y, value = n)) +
+  geom_parallel_sets(aes(fill = Category), alpha = 0.6, axis.width = 0.05, sep = .1) +
+  geom_parallel_sets_axes(axis.width = 0.01, fill = "gray80", sep = .1) + 
+  geom_parallel_sets_labels(size = 2, angle = 0, 
+                            position = position_nudge(x = c(rep(-.1, 6), rep(.1, 7)) ),
+                            sep = .1) +
+  scale_fill_manual(values = cols) +
+  theme_void() +
+  theme(legend.position = "")
+
+
+
